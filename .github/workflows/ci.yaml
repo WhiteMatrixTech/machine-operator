@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' }}
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    strategy:
+      matrix:
+        os: [ linux, darwin, windows ]
+        arch: [ amd64, arm64 ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '1.22'
+          cache: true
+      - name: New Artifact Dir
+        run: mkdir artifact
+      - name: Build Linux
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+        run: |    
+          export app=machine-operator
+          go build -o ${app} .
+          tar -zcvf linux_amd64.tar.gz ./${app}
+          rm -rf ./${app}
+          mv linux_amd64.tar.gz artifact
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v3
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: binary
+          path: ${{ github.workspace }}/artifact
+          if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: ci
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download binary
+        uses: actions/download-artifact@v3
+        with:
+          name: binary
+          path: public/
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: README.md
+          files: |
+            public/linux_amd64.tar.gz
