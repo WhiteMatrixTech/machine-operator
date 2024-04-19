@@ -16,10 +16,6 @@ jobs:
     if: ${{ github.event_name != 'pull_request' }}
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
-    strategy:
-      matrix:
-        os: [ linux, darwin, windows ]
-        arch: [ amd64, arm64 ]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
