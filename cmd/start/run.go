@@ -3,6 +3,7 @@ package start
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"machine-operator/pkg"
 	"os"
@@ -115,6 +116,7 @@ StateWatch:
 		select {
 		case <-ticker.C:
 			instanceState, _ := ec2Util.GetInstanceStatusByID(startInstanceID)
+			fmt.Println("the instance state: " + instanceState)
 			if instanceState == pkg.InstanceStatusRunning {
 				break StateWatch
 			}
@@ -127,6 +129,7 @@ StateWatch:
 	if isTimeout {
 		return errors.New("start instance timeout")
 	}
+	fmt.Println("The instance started is " + startInstanceID)
 	err = os.Setenv("INSTANCE_ID", startInstanceID)
 	return err
 }
