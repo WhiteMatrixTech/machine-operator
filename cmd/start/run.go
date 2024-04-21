@@ -4,20 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"log"
-	"machine-operator/pkg"
 	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/spf13/cobra"
+
+	"machine-operator/pkg"
 )
 
 var (
 	region           string
 	serverLabelKey   string
 	serverLabelValue string
+	instanceIDPath   string
 	StartCmd         = &cobra.Command{
 		Use:          "start",
 		Short:        "start machine",
@@ -43,11 +46,17 @@ func init() {
 	StartCmd.PersistentFlags().StringVar(&serverLabelValue,
 		"serverLabelValue", os.Getenv("serverLabelValue"),
 		"the value of server label")
+	StartCmd.PersistentFlags().StringVar(&instanceIDPath,
+		"instanceIDPath", os.Getenv("instanceIDPath"),
+		"file path to write instanceID")
 }
 
 func preRun() {
 	if serverLabelKey == "" {
 		serverLabelKey = "server"
+	}
+	if instanceIDPath == "" {
+		instanceIDPath = "instanceID.txt"
 	}
 }
 
@@ -82,7 +91,7 @@ func run() error {
 	}
 
 	startOneInstance := false
-	startInstanceID := ""
+	startedInstanceID := ""
 	for true {
 		for _, instanceID := range instancesIDs {
 			instanceState, err := ec2Util.GetInstanceStatusByID(instanceID)
@@ -97,7 +106,7 @@ func run() error {
 					return err
 				}
 				startOneInstance = true
-				startInstanceID = instanceID
+				startedInstanceID = instanceID
 				break
 			}
 		}
@@ -115,7 +124,7 @@ StateWatch:
 	for {
 		select {
 		case <-ticker.C:
-			instanceState, _ := ec2Util.GetInstanceStatusByID(startInstanceID)
+			instanceState, _ := ec2Util.GetInstanceStatusByID(startedInstanceID)
 			fmt.Println("the instance state: " + instanceState)
 			if instanceState == pkg.InstanceStatusRunning {
 				break StateWatch
@@ -129,7 +138,7 @@ StateWatch:
 	if isTimeout {
 		return errors.New("start instance timeout")
 	}
-	fmt.Println("The instance started is " + startInstanceID)
-	err = os.Setenv("INSTANCE_ID", startInstanceID)
+	fmt.Println("The instance started is " + startedInstanceID)
+	err = pkg.WriteToFile(instanceIDPath, startedInstanceID)
 	return err
 }
