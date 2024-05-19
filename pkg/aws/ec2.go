@@ -1,28 +1,31 @@
-package pkg
+package aws
 
 import (
 	"context"
 	"errors"
+	"log"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"log"
 )
 
 type EC2Util struct {
 	Client *ec2.Client
 }
 
-func (u *EC2Util) GetInstanceIDsStatusByLabel(serverLabelKey string, serverLabelValue string) ([]string, error) {
+func (u *EC2Util) GetInstanceIDsByTag(tags map[string]string) ([]string, error) {
 	instanceIDs := []string{}
-	describeInstancesInput := &ec2.DescribeInstancesInput{
-		Filters: []types.Filter{
-			{
-				Name:   aws.String("tag:" + serverLabelKey),
-				Values: []string{serverLabelValue},
-			},
-		},
+	describeInstancesInput := &ec2.DescribeInstancesInput{}
+	filters := []types.Filter{}
+	for key, value := range tags {
+		filters = append(filters, types.Filter{
+			Name:   aws.String("tag:" + key),
+			Values: []string{value},
+		})
 	}
+	describeInstancesInput.Filters = filters
+
 	describeInstancesOutput, err := u.Client.DescribeInstances(context.TODO(), describeInstancesInput)
 	if err != nil {
 		log.Fatal(err)
@@ -52,7 +55,7 @@ func (u *EC2Util) GetInstanceStatusByID(instanceID string) (string, error) {
 	return string(instanceStatus), nil
 }
 
-func (u EC2Util) StartInstance(instanceID string) error {
+func (u *EC2Util) StartInstance(instanceID string) error {
 	startInstanceInput := &ec2.StartInstancesInput{
 		InstanceIds: []string{instanceID},
 	}
@@ -64,7 +67,7 @@ func (u EC2Util) StartInstance(instanceID string) error {
 	return nil
 }
 
-func (u EC2Util) StopInstance(instanceID string) (string, error) {
+func (u *EC2Util) StopInstance(instanceID string) (string, error) {
 	stopInstancesInput := &ec2.StopInstancesInput{
 		InstanceIds: []string{instanceID},
 	}
