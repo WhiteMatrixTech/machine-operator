@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aliyun/alibaba-cloud-sdk-go/services/ecs"
+	"machine-operator/pkg/aliyun"
+	"machine-operator/pkg/aws"
+	"strings"
 
 	"log"
 	"os"
@@ -17,11 +21,11 @@ import (
 )
 
 var (
-	region           string
-	serverLabelKey   string
-	serverLabelValue string
-	instanceIDPath   string
-	StartCmd         = &cobra.Command{
+	platform       string
+	region         string
+	tags           string
+	instanceIDPath string
+	StartCmd       = &cobra.Command{
 		Use:          "start",
 		Short:        "start machine",
 		Example:      "machine-operator start",
@@ -37,72 +41,100 @@ var (
 )
 
 func init() {
+	StartCmd.PersistentFlags().StringVar(&platform,
+		"platform", os.Getenv("platform"),
+		"the platform")
 	StartCmd.PersistentFlags().StringVar(&region,
 		"region", os.Getenv("region"),
-		"the region of aws config")
-	StartCmd.PersistentFlags().StringVar(&serverLabelKey,
-		"serverLabelKey", os.Getenv("serverLabelKey"),
-		"the key of server label")
-	StartCmd.PersistentFlags().StringVar(&serverLabelValue,
-		"serverLabelValue", os.Getenv("serverLabelValue"),
-		"the value of server label")
+		"the region of cloud platform")
+	StartCmd.PersistentFlags().StringVar(&tags,
+		"tags", os.Getenv("tags"),
+		"the instance tags")
 	StartCmd.PersistentFlags().StringVar(&instanceIDPath,
 		"instanceIDPath", os.Getenv("instanceIDPath"),
 		"file path to write instanceID")
 }
 
 func preRun() {
-	if serverLabelKey == "" {
-		serverLabelKey = "server"
-	}
 	if instanceIDPath == "" {
 		instanceIDPath = "instanceID.txt"
 	}
 }
 
 func run() error {
+	if platform == "" {
+		log.Println("missing 'platform' parameter")
+		return errors.New("missing platform parameter")
+	}
 	if region == "" {
-		log.Fatal("missing 'region' parameter")
+		log.Println("missing 'region' parameter")
 		return errors.New("missing 'region' parameter")
 	}
-	if serverLabelValue == "" {
-		log.Fatal("missing 'serverLabelValue' parameter")
-		return errors.New("missing 'serverLabelValue' parameter")
-	}
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
-	if err != nil {
-		log.Fatal(err)
-		return err
-	}
-	client := ec2.NewFromConfig(cfg)
 
-	ec2Util := pkg.EC2Util{
-		Client: client,
+	if tags == "" {
+		log.Println("missing 'tags' parameter")
+		return errors.New("missing 'tags' parameter")
 	}
 
-	instancesIDs, err := ec2Util.GetInstanceIDsStatusByLabel(serverLabelKey, serverLabelValue)
+	var instanceUtil pkg.InstanceUtil
+	switch platform {
+	case pkg.PlatformAWS:
+		cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+		client := ec2.NewFromConfig(cfg)
+		ec2Util := &aws.EC2Util{
+			Client: client,
+		}
+		instanceUtil = ec2Util
+	case pkg.PlatformAliyun:
+		accessKeyId := os.Getenv(pkg.AliyunAccessKeyID)
+		accessKeySecret := os.Getenv(pkg.AliyunAccessKeySecret)
+		client, err := ecs.NewClientWithAccessKey(region, accessKeyId, accessKeySecret)
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+		ecsUtil := &aliyun.ECSUtil{
+			Client: client,
+		}
+		instanceUtil = ecsUtil
+	default:
+		return errors.New("unsupported platform type ")
+	}
+
+	instanceTags := make(map[string]string)
+	tagsSlice := strings.Split(tags, ",")
+	for _, tag := range tagsSlice {
+		tagSlice := strings.Split(tag, ":")
+		instanceTags[tagSlice[0]] = tagSlice[1]
+	}
+
+	instancesIDs, err := instanceUtil.GetInstanceIDsByTag(instanceTags)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 		return err
 	}
 	if len(instancesIDs) < 1 {
-		log.Fatal("No matching instance found")
-		return errors.New("No matching instance found")
+		log.Println("No matching instance found")
+		return errors.New("No matching instance found ")
 	}
 
 	startOneInstance := false
 	startedInstanceID := ""
 	for true {
 		for _, instanceID := range instancesIDs {
-			instanceState, err := ec2Util.GetInstanceStatusByID(instanceID)
+			instanceState, err := instanceUtil.GetInstanceStatusByID(instanceID)
 			if err != nil {
 				log.Fatal(err)
 				return err
 			}
 			if instanceState == pkg.InstanceStatusStopped {
-				err := ec2Util.StartInstance(instanceID)
+				err := instanceUtil.StartInstance(instanceID)
 				if err != nil {
-					log.Fatal(err)
+					log.Println(err)
 					return err
 				}
 				startOneInstance = true
@@ -124,7 +156,7 @@ StateWatch:
 	for {
 		select {
 		case <-ticker.C:
-			instanceState, _ := ec2Util.GetInstanceStatusByID(startedInstanceID)
+			instanceState, _ := instanceUtil.GetInstanceStatusByID(startedInstanceID)
 			fmt.Println("the instance state: " + instanceState)
 			if instanceState == pkg.InstanceStatusRunning {
 				break StateWatch
