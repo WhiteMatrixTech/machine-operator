@@ -32,9 +32,9 @@ jobs:
         run: |    
           export app=machine-operator
           go build -o ${app} .
-          tar -zcvf linux_amd64.tar.gz ./${app}
+          tar -zcvf machine_operator_linux_amd64.tar.gz ./${app}
           rm -rf ./${app}
-          mv linux_amd64.tar.gz artifact
+          mv machine_operator_linux_amd64.tar.gz artifact
 
       - name: Upload binary
         uses: actions/upload-artifact@v3
@@ -62,4 +62,4 @@ jobs:
         with:
           body_path: README.md
           files: |
-            public/linux_amd64.tar.gz
+            public/machine_operator_linux_amd64.tar.gz
