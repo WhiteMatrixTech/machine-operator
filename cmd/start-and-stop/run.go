@@ -97,8 +97,9 @@ func run() error {
 				log.Println(err.Error())
 				continue
 			}
+			instanceNeedsStop = append(instanceNeedsStop, instancesIDs[i])
 		}
-		instanceNeedsStop = append(instanceNeedsStop, instancesIDs[i])
+
 	}
 
 	time.Sleep(2 * time.Minute)
