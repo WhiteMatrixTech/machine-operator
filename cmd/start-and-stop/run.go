@@ -1,8 +1,7 @@
-package start
+package start_and_stop
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -14,14 +13,13 @@ import (
 )
 
 var (
-	platform       string
-	region         string
-	tags           string
-	instanceIDPath string
-	StartCmd       = &cobra.Command{
-		Use:          "start",
-		Short:        "start machine",
-		Example:      "machine-operator start",
+	platform string
+	region   string
+	tags     string
+	StartCmd = &cobra.Command{
+		Use:          "start-and-stop",
+		Short:        "start and stop machine",
+		Example:      "machine-operator start-and-stop",
 		SilenceUsage: true,
 		PreRun: func(_ *cobra.Command, _ []string) {
 			log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
@@ -43,16 +41,9 @@ func init() {
 	StartCmd.PersistentFlags().StringVar(&tags,
 		"tags", os.Getenv("tags"),
 		"the instance tags")
-	StartCmd.PersistentFlags().StringVar(&instanceIDPath,
-		"instanceIDPath", os.Getenv("instanceIDPath"),
-		"file path to write instanceID")
 }
 
-func preRun() {
-	if instanceIDPath == "" {
-		instanceIDPath = "instanceID.txt"
-	}
-}
+func preRun() {}
 
 func run() error {
 	if platform == "" {
@@ -92,55 +83,35 @@ func run() error {
 		return errors.New("No matching instance found ")
 	}
 
-	startOneInstance := false
-	startedInstanceID := ""
-	for true {
-		for _, instanceID := range instancesIDs {
-			instanceState, err := instanceUtil.GetInstanceStatusByID(instanceID)
+	instanceNeedsStop := make([]string, 0)
+
+	for i := range instancesIDs {
+		instanceState, err := instanceUtil.GetInstanceStatusByID(instancesIDs[i])
+		if err != nil {
+			log.Println(err.Error())
+			continue
+		}
+		if instanceState == pkg.InstanceStatusStopped {
+			err := instanceUtil.StartInstance(instancesIDs[i])
 			if err != nil {
-				log.Fatal(err)
-				return err
-			}
-			if instanceState == pkg.InstanceStatusStopped {
-				err := instanceUtil.StartInstance(instanceID)
-				if err != nil {
-					log.Println(err)
-					return err
-				}
-				startOneInstance = true
-				startedInstanceID = instanceID
-				break
+				log.Println(err.Error())
+				continue
 			}
 		}
-		if startOneInstance {
-			break
-		}
+		instanceNeedsStop = append(instanceNeedsStop, instancesIDs[i])
 	}
 
-	timeout := time.After(time.Duration(5) * time.Minute)
-	isTimeout := false
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-StateWatch:
-	for {
-		select {
-		case <-ticker.C:
-			instanceState, _ := instanceUtil.GetInstanceStatusByID(startedInstanceID)
-			fmt.Println("the instance state: " + instanceState)
-			if instanceState == pkg.InstanceStatusRunning {
-				break StateWatch
+	time.Sleep(2 * time.Minute)
+	for i := range instanceNeedsStop {
+		instanceState, _ := instanceUtil.GetInstanceStatusByID(instanceNeedsStop[i])
+		if instanceState == pkg.InstanceStatusRunning {
+			_, err := instanceUtil.StopInstance(instanceNeedsStop[i])
+			if err != nil {
+				log.Println(err.Error())
+				continue
 			}
-		case <-timeout:
-			isTimeout = true
-			break StateWatch
 		}
 	}
 
-	if isTimeout {
-		return errors.New("start instance timeout")
-	}
-	fmt.Println("The instance started is " + startedInstanceID)
-	err = pkg.WriteToFile(instanceIDPath, startedInstanceID)
-	return err
+	return nil
 }

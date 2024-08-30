@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"machine-operator/cmd/start"
+	"machine-operator/cmd/start-and-stop"
 	"machine-operator/cmd/stop"
 )
 
@@ -29,6 +30,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(start.StartCmd)
 	rootCmd.AddCommand(stop.StartCmd)
+	rootCmd.AddCommand(start_and_stop.StartCmd)
 }
 
 // Execute : apply commands

@@ -1,18 +1,14 @@
 package stop
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"github.com/aliyun/alibaba-cloud-sdk-go/services/ecs"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/spf13/cobra"
 	"log"
-	"machine-operator/pkg"
-	"machine-operator/pkg/aliyun"
-	"machine-operator/pkg/aws"
 	"os"
+
+	"github.com/spf13/cobra"
+
+	"machine-operator/pkg"
 )
 
 var (
@@ -64,34 +60,10 @@ func run() error {
 		return errors.New("missing instanceID parameter")
 	}
 
-	var machineUtil pkg.InstanceUtil
-
-	switch platform {
-	case pkg.PlatformAWS:
-		cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
-		if err != nil {
-			log.Fatal(err)
-			return err
-		}
-		client := ec2.NewFromConfig(cfg)
-		ec2Util := &aws.EC2Util{
-			Client: client,
-		}
-		machineUtil = ec2Util
-	case pkg.PlatformAliyun:
-		accessKeyId := os.Getenv(pkg.AliyunAccessKeyID)
-		accessKeySecret := os.Getenv(pkg.AliyunAccessKeySecret)
-		client, err := ecs.NewClientWithAccessKey(region, accessKeyId, accessKeySecret)
-		if err != nil {
-			log.Fatal(err)
-			return err
-		}
-		ecsUtil := &aliyun.ECSUtil{
-			Client: client,
-		}
-		machineUtil = ecsUtil
-	default:
-		return errors.New("unsupported platform type ")
+	machineUtil, err := pkg.GetInstanceUtil(platform, region)
+	if err != nil {
+		log.Println("failed to get platform client")
+		return errors.New(err.Error())
 	}
 
 	instanceState, err := machineUtil.StopInstance(instanceID)
