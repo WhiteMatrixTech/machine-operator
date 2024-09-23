@@ -66,40 +66,43 @@ func run() error {
 		return errors.New(err.Error())
 	}
 
-	instanceTags := make(map[string]string)
+	instanceIDs := make([]string, 0)
 	tagsSlice := strings.Split(tags, ",")
 	for _, tag := range tagsSlice {
 		tagSlice := strings.Split(tag, ":")
-		instanceTags[tagSlice[0]] = tagSlice[1]
+		instanceID, err := instanceUtil.GetInstanceIDsByTag(map[string]string{tagSlice[0]: tagSlice[1]})
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+		instanceIDs = append(instanceIDs, instanceID...)
 	}
+	log.Println("=====Instances matched by tags=====")
+	log.Println(instanceIDs)
 
-	instancesIDs, err := instanceUtil.GetInstanceIDsByTag(instanceTags)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-	if len(instancesIDs) < 1 {
+	if len(instanceIDs) < 1 {
 		log.Println("No matching instance found")
 		return errors.New("No matching instance found ")
 	}
 
 	instanceNeedsStop := make([]string, 0)
-
-	for i := range instancesIDs {
-		instanceState, err := instanceUtil.GetInstanceStatusByID(instancesIDs[i])
+	for i := range instanceIDs {
+		instanceState, err := instanceUtil.GetInstanceStatusByID(instanceIDs[i])
 		if err != nil {
 			log.Println(err.Error())
 			continue
 		}
 		if instanceState == pkg.InstanceStatusStopped {
-			err := instanceUtil.StartInstance(instancesIDs[i])
+			err := instanceUtil.StartInstance(instanceIDs[i])
 			if err != nil {
 				log.Println(err.Error())
 				continue
 			}
 		}
-		instanceNeedsStop = append(instanceNeedsStop, instancesIDs[i])
+		instanceNeedsStop = append(instanceNeedsStop, instanceIDs[i])
 	}
+	log.Println("=====Instances that need to be started and then stopped=====")
+	log.Println(instanceIDs)
 
 	time.Sleep(2 * time.Minute)
 	for i := range instanceNeedsStop {
